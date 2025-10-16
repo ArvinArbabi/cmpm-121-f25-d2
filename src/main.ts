@@ -14,7 +14,13 @@ canvas.className = "game-canvas";
 const clearBtn = document.createElement("button");
 clearBtn.textContent = "Clear";
 
-root.append(title, canvas, clearBtn);
+const undoBtn = document.createElement("button");
+undoBtn.textContent = "Undo";
+
+const redoBtn = document.createElement("button");
+redoBtn.textContent = "Redo";
+
+root.append(title, canvas, clearBtn, undoBtn, redoBtn);
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 ctx.lineCap = "round";
@@ -25,6 +31,7 @@ ctx.strokeStyle = "#000";
 let drawing = false;
 let drawings: { x: number; y: number }[][] = [];
 let currentPath: { x: number; y: number }[] = [];
+const redoStack: { x: number; y: number }[][] = [];
 
 function getPos(e: MouseEvent) {
   const r = canvas.getBoundingClientRect();
@@ -71,5 +78,19 @@ canvas.addEventListener("mousemove", (e) => {
 
 clearBtn.addEventListener("click", () => {
   drawings = [];
+  canvas.dispatchEvent(new Event("drawing-changed"));
+});
+
+undoBtn.addEventListener("click", () => {
+  if (drawings.length === 0) return;
+  const popped = drawings.pop()!;
+  redoStack.push(popped);
+  canvas.dispatchEvent(new Event("drawing-changed"));
+});
+
+redoBtn.addEventListener("click", () => {
+  if (redoStack.length === 0) return;
+  const restored = redoStack.pop()!;
+  drawings.push(restored);
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
