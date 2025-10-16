@@ -23,6 +23,8 @@ ctx.lineWidth = 4;
 ctx.strokeStyle = "#000";
 
 let drawing = false;
+let drawings: { x: number; y: number }[][] = [];
+let currentPath: { x: number; y: number }[] = [];
 
 function getPos(e: MouseEvent) {
   const r = canvas.getBoundingClientRect();
@@ -34,18 +36,33 @@ function getPos(e: MouseEvent) {
   };
 }
 
+function redraw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  for (const path of drawings) {
+    if (path.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+  }
+}
+
+canvas.addEventListener("drawing-changed", () => redraw());
+
 canvas.addEventListener("mousedown", (e) => {
-  const { x, y } = getPos(e);
   drawing = true;
-  ctx.beginPath();
-  ctx.moveTo(x, y);
+  currentPath = [];
+  drawings.push(currentPath);
+  const pos = getPos(e);
+  currentPath.push(pos);
+  canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 canvas.addEventListener("mousemove", (e) => {
   if (!drawing) return;
-  const { x, y } = getPos(e);
-  ctx.lineTo(x, y);
-  ctx.stroke();
+  const pos = getPos(e);
+  currentPath.push(pos);
+  canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 ["mouseup", "mouseleave"].forEach((t) =>
@@ -53,5 +70,6 @@ canvas.addEventListener("mousemove", (e) => {
 );
 
 clearBtn.addEventListener("click", () => {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  drawings = [];
+  canvas.dispatchEvent(new Event("drawing-changed"));
 });
