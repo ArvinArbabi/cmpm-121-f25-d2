@@ -1,6 +1,14 @@
-import exampleIconUrl from "./noun-paperclip-7598668-00449F.png";
 import "./style.css";
 
-document.body.innerHTML = `
-  <p>Example image asset: <img src="${exampleIconUrl}" class="icon" /></p>
-`;
+const root = document.createElement("div");
+document.body.replaceChildren(root);
+
+const title = document.createElement("h1");
+title.textContent = "CMPM 121 — D2";
+
+const canvas = document.createElement("canvas");
+canvas.width = 256;
+canvas.height = 256;
+canvas.className = "game-canvas";
+
+root.append(title, canvas);

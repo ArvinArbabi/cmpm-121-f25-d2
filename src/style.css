@@ -1,5 +1,5 @@
-.icon {
-  width: 64px;
-  vertical-align: top;
-  border: 1px solid salmon;
+.game-canvas {
+  border: 1px solid #000;
+  border-radius: 12px;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.15));
 }
