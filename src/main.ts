@@ -1,5 +1,28 @@
 import "./style.css";
 
+type DisplayCommand = {
+  display(ctx: CanvasRenderingContext2D): void;
+};
+
+class MarkerLine implements DisplayCommand {
+  private pts: { x: number; y: number }[] = [];
+  constructor(p0: { x: number; y: number }) {
+    this.pts.push(p0);
+  }
+  drag(x: number, y: number) {
+    this.pts.push({ x, y });
+  }
+  display(ctx: CanvasRenderingContext2D) {
+    if (this.pts.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(this.pts[0].x, this.pts[0].y);
+    for (let i = 1; i < this.pts.length; i++) {
+      ctx.lineTo(this.pts[i].x, this.pts[i].y);
+    }
+    ctx.stroke();
+  }
+}
+
 const root = document.createElement("div");
 document.body.replaceChildren(root);
 
@@ -29,9 +52,9 @@ ctx.lineWidth = 4;
 ctx.strokeStyle = "#000";
 
 let drawing = false;
-let drawings: { x: number; y: number }[][] = [];
-let currentPath: { x: number; y: number }[] = [];
-const redoStack: { x: number; y: number }[][] = [];
+let commands: DisplayCommand[] = [];
+let currentCmd: MarkerLine | null = null;
+const redoStack: DisplayCommand[] = [];
 
 function getPos(e: MouseEvent) {
   const r = canvas.getBoundingClientRect();
@@ -45,45 +68,43 @@ function getPos(e: MouseEvent) {
 
 function redraw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  for (const path of drawings) {
-    if (path.length < 2) continue;
-    ctx.beginPath();
-    ctx.moveTo(path[0].x, path[0].y);
-    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
-    ctx.stroke();
-  }
+  for (const cmd of commands) cmd.display(ctx);
 }
 
 canvas.addEventListener("drawing-changed", () => redraw());
 
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
-  currentPath = [];
-  drawings.push(currentPath);
-  const pos = getPos(e);
-  currentPath.push(pos);
+  const p = getPos(e);
+  currentCmd = new MarkerLine(p);
+  commands.push(currentCmd);
+  redoStack.length = 0;
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 canvas.addEventListener("mousemove", (e) => {
-  if (!drawing) return;
-  const pos = getPos(e);
-  currentPath.push(pos);
+  if (!drawing || !currentCmd) return;
+  const p = getPos(e);
+  currentCmd.drag(p.x, p.y);
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 ["mouseup", "mouseleave"].forEach((t) =>
-  canvas.addEventListener(t, () => (drawing = false))
+  canvas.addEventListener(t, () => {
+    drawing = false;
+    currentCmd = null;
+  })
 );
 
 clearBtn.addEventListener("click", () => {
-  drawings = [];
+  commands = [];
+  redoStack.length = 0;
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 undoBtn.addEventListener("click", () => {
-  if (drawings.length === 0) return;
-  const popped = drawings.pop()!;
+  if (commands.length === 0) return;
+  const popped = commands.pop()!;
   redoStack.push(popped);
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
@@ -91,6 +112,6 @@ undoBtn.addEventListener("click", () => {
 redoBtn.addEventListener("click", () => {
   if (redoStack.length === 0) return;
   const restored = redoStack.pop()!;
-  drawings.push(restored);
+  commands.push(restored);
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
