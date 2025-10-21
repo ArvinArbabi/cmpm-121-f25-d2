@@ -3,3 +3,8 @@
   border-radius: 12px;
   filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.15));
 }
+
+.selectedTool {
+  outline: 2px solid #00449f;
+  background: #e8f0ff;
+}
