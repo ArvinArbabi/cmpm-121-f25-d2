@@ -42,6 +42,48 @@ class ToolPreview implements DisplayCommand {
   }
 }
 
+class StickerPreview implements DisplayCommand {
+  constructor(
+    public x: number,
+    public y: number,
+    public emoji: string,
+    public size: number,
+  ) {}
+  update(x: number, y: number, emoji: string, size: number) {
+    this.x = x;
+    this.y = y;
+    this.emoji = emoji;
+    this.size = size;
+  }
+  display(ctx: CanvasRenderingContext2D) {
+    ctx.font = `${this.size}px system-ui, emoji`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "rgba(0,0,0,0.85)";
+    ctx.fillText(this.emoji, this.x, this.y);
+  }
+}
+
+class StickerCommand implements DisplayCommand {
+  constructor(
+    public x: number,
+    public y: number,
+    public emoji: string,
+    public size: number,
+  ) {}
+  drag(x: number, y: number) {
+    this.x = x;
+    this.y = y;
+  }
+  display(ctx: CanvasRenderingContext2D) {
+    ctx.font = `${this.size}px system-ui, emoji`;
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillStyle = "#000";
+    ctx.fillText(this.emoji, this.x, this.y);
+  }
+}
+
 const root = document.createElement("div");
 document.body.replaceChildren(root);
 
@@ -61,6 +103,15 @@ thinBtn.textContent = "Thin";
 const thickBtn = document.createElement("button");
 thickBtn.textContent = "Thick";
 
+const stickerRow = document.createElement("div");
+const s1Btn = document.createElement("button");
+s1Btn.textContent = "💀";
+const s2Btn = document.createElement("button");
+s2Btn.textContent = "🦴";
+const s3Btn = document.createElement("button");
+s3Btn.textContent = "🔥";
+stickerRow.append(s1Btn, s2Btn, s3Btn);
+
 const clearBtn = document.createElement("button");
 clearBtn.textContent = "Clear";
 
@@ -70,28 +121,66 @@ undoBtn.textContent = "Undo";
 const redoBtn = document.createElement("button");
 redoBtn.textContent = "Redo";
 
-toolbar.append(thinBtn, thickBtn, clearBtn, undoBtn, redoBtn);
+toolbar.append(thinBtn, thickBtn, stickerRow, clearBtn, undoBtn, redoBtn);
 root.append(title, canvas, toolbar);
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
 
 let drawing = false;
 let commands: DisplayCommand[] = [];
-let currentCmd: MarkerLine | null = null;
+let currentCmd: MarkerLine | StickerCommand | null = null;
 const redoStack: DisplayCommand[] = [];
 
+type Mode = "marker" | "sticker";
+let mode: Mode = "marker";
 let currentThickness = 2;
-let preview: ToolPreview | null = new ToolPreview(128, 128, currentThickness);
+let currentSticker = "💀";
+const stickerSize = 28;
 
-function selectTool(btn: HTMLButtonElement, thickness: number) {
+let preview: ToolPreview | StickerPreview | null = new ToolPreview(
+  128,
+  128,
+  currentThickness,
+);
+
+function selectMarker(btn: HTMLButtonElement, thickness: number) {
+  mode = "marker";
   currentThickness = thickness;
   thinBtn.classList.toggle("selectedTool", btn === thinBtn);
   thickBtn.classList.toggle("selectedTool", btn === thickBtn);
-  if (preview) preview.width = currentThickness;
+  s1Btn.classList.remove("selectedTool");
+  s2Btn.classList.remove("selectedTool");
+  s3Btn.classList.remove("selectedTool");
+  if (!drawing) {
+    if (!(preview instanceof ToolPreview)) {
+      preview = new ToolPreview(128, 128, currentThickness);
+    } else preview.width = currentThickness;
+    canvas.dispatchEvent(new Event("tool-moved"));
+  }
 }
-thinBtn.addEventListener("click", () => selectTool(thinBtn, 2));
-thickBtn.addEventListener("click", () => selectTool(thickBtn, 8));
-selectTool(thinBtn, 2);
+
+function selectSticker(btn: HTMLButtonElement, emoji: string) {
+  mode = "sticker";
+  currentSticker = emoji;
+  thinBtn.classList.remove("selectedTool");
+  thickBtn.classList.remove("selectedTool");
+  s1Btn.classList.toggle("selectedTool", btn === s1Btn);
+  s2Btn.classList.toggle("selectedTool", btn === s2Btn);
+  s3Btn.classList.toggle("selectedTool", btn === s3Btn);
+  if (!drawing) {
+    if (!(preview instanceof StickerPreview)) {
+      preview = new StickerPreview(128, 128, currentSticker, stickerSize);
+    } else preview.update(preview.x, preview.y, currentSticker, stickerSize);
+    canvas.dispatchEvent(new Event("tool-moved"));
+  }
+}
+
+thinBtn.addEventListener("click", () => selectMarker(thinBtn, 2));
+thickBtn.addEventListener("click", () => selectMarker(thickBtn, 8));
+s1Btn.addEventListener("click", () => selectSticker(s1Btn, "💀"));
+s2Btn.addEventListener("click", () => selectSticker(s2Btn, "🦴"));
+s3Btn.addEventListener("click", () => selectSticker(s3Btn, "🔥"));
+selectMarker(thinBtn, 2);
 
 function getPos(e: MouseEvent) {
   const r = canvas.getBoundingClientRect();
@@ -112,9 +201,14 @@ canvas.addEventListener("tool-moved", () => redraw());
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
   const p = getPos(e);
-  currentCmd = new MarkerLine(p, currentThickness);
-  commands.push(currentCmd);
   redoStack.length = 0;
+  if (mode === "marker") {
+    currentCmd = new MarkerLine(p, currentThickness);
+    commands.push(currentCmd);
+  } else {
+    currentCmd = new StickerCommand(p.x, p.y, currentSticker, stickerSize);
+    commands.push(currentCmd);
+  }
   preview = null;
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
@@ -125,8 +219,15 @@ canvas.addEventListener("mousemove", (e) => {
     currentCmd.drag(p.x, p.y);
     canvas.dispatchEvent(new Event("drawing-changed"));
   } else {
-    if (!preview) preview = new ToolPreview(p.x, p.y, currentThickness);
-    else preview.update(p.x, p.y, currentThickness);
+    if (mode === "marker") {
+      if (!(preview instanceof ToolPreview)) {
+        preview = new ToolPreview(p.x, p.y, currentThickness);
+      } else preview.update(p.x, p.y, currentThickness);
+    } else {
+      if (!(preview instanceof StickerPreview)) {
+        preview = new StickerPreview(p.x, p.y, currentSticker, stickerSize);
+      } else preview.update(p.x, p.y, currentSticker, stickerSize);
+    }
     canvas.dispatchEvent(new Event("tool-moved"));
   }
 });
