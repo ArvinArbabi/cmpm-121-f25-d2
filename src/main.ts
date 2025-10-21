@@ -1,12 +1,10 @@
 import "./style.css";
 
-type DisplayCommand = {
-  display(ctx: CanvasRenderingContext2D): void;
-};
+type DisplayCommand = { display(ctx: CanvasRenderingContext2D): void };
 
 class MarkerLine implements DisplayCommand {
   private pts: { x: number; y: number }[] = [];
-  constructor(p0: { x: number; y: number }) {
+  constructor(p0: { x: number; y: number }, private width: number) {
     this.pts.push(p0);
   }
   drag(x: number, y: number) {
@@ -14,6 +12,10 @@ class MarkerLine implements DisplayCommand {
   }
   display(ctx: CanvasRenderingContext2D) {
     if (this.pts.length < 2) return;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = this.width;
+    ctx.strokeStyle = "#000";
     ctx.beginPath();
     ctx.moveTo(this.pts[0].x, this.pts[0].y);
     for (let i = 1; i < this.pts.length; i++) {
@@ -34,6 +36,14 @@ canvas.width = 256;
 canvas.height = 256;
 canvas.className = "game-canvas";
 
+const toolbar = document.createElement("div");
+
+const thinBtn = document.createElement("button");
+thinBtn.textContent = "Thin";
+
+const thickBtn = document.createElement("button");
+thickBtn.textContent = "Thick";
+
 const clearBtn = document.createElement("button");
 clearBtn.textContent = "Clear";
 
@@ -43,27 +53,33 @@ undoBtn.textContent = "Undo";
 const redoBtn = document.createElement("button");
 redoBtn.textContent = "Redo";
 
-root.append(title, canvas, clearBtn, undoBtn, redoBtn);
+toolbar.append(thinBtn, thickBtn, clearBtn, undoBtn, redoBtn);
+root.append(title, canvas, toolbar);
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
-ctx.lineCap = "round";
-ctx.lineJoin = "round";
-ctx.lineWidth = 4;
-ctx.strokeStyle = "#000";
 
 let drawing = false;
 let commands: DisplayCommand[] = [];
 let currentCmd: MarkerLine | null = null;
 const redoStack: DisplayCommand[] = [];
 
+let currentThickness = 2;
+
+function selectTool(btn: HTMLButtonElement, thickness: number) {
+  currentThickness = thickness;
+  thinBtn.classList.toggle("selectedTool", btn === thinBtn);
+  thickBtn.classList.toggle("selectedTool", btn === thickBtn);
+}
+
+thinBtn.addEventListener("click", () => selectTool(thinBtn, 2));
+thickBtn.addEventListener("click", () => selectTool(thickBtn, 8));
+selectTool(thinBtn, 2);
+
 function getPos(e: MouseEvent) {
   const r = canvas.getBoundingClientRect();
   const scaleX = canvas.width / r.width;
   const scaleY = canvas.height / r.height;
-  return {
-    x: (e.clientX - r.left) * scaleX,
-    y: (e.clientY - r.top) * scaleY,
-  };
+  return { x: (e.clientX - r.left) * scaleX, y: (e.clientY - r.top) * scaleY };
 }
 
 function redraw() {
@@ -76,7 +92,7 @@ canvas.addEventListener("drawing-changed", () => redraw());
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
   const p = getPos(e);
-  currentCmd = new MarkerLine(p);
+  currentCmd = new MarkerLine(p, currentThickness);
   commands.push(currentCmd);
   redoStack.length = 0;
   canvas.dispatchEvent(new Event("drawing-changed"));
