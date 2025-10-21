@@ -25,6 +25,23 @@ class MarkerLine implements DisplayCommand {
   }
 }
 
+class ToolPreview implements DisplayCommand {
+  constructor(public x: number, public y: number, public width: number) {}
+  update(x: number, y: number, width: number) {
+    this.x = x;
+    this.y = y;
+    this.width = width;
+  }
+  display(ctx: CanvasRenderingContext2D) {
+    const r = this.width / 2;
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0,0,0,0.5)";
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+}
+
 const root = document.createElement("div");
 document.body.replaceChildren(root);
 
@@ -64,13 +81,14 @@ let currentCmd: MarkerLine | null = null;
 const redoStack: DisplayCommand[] = [];
 
 let currentThickness = 2;
+let preview: ToolPreview | null = new ToolPreview(128, 128, currentThickness);
 
 function selectTool(btn: HTMLButtonElement, thickness: number) {
   currentThickness = thickness;
   thinBtn.classList.toggle("selectedTool", btn === thinBtn);
   thickBtn.classList.toggle("selectedTool", btn === thickBtn);
+  if (preview) preview.width = currentThickness;
 }
-
 thinBtn.addEventListener("click", () => selectTool(thinBtn, 2));
 thickBtn.addEventListener("click", () => selectTool(thickBtn, 8));
 selectTool(thinBtn, 2);
@@ -85,9 +103,11 @@ function getPos(e: MouseEvent) {
 function redraw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   for (const cmd of commands) cmd.display(ctx);
+  if (!drawing && preview) preview.display(ctx);
 }
 
 canvas.addEventListener("drawing-changed", () => redraw());
+canvas.addEventListener("tool-moved", () => redraw());
 
 canvas.addEventListener("mousedown", (e) => {
   drawing = true;
@@ -95,22 +115,30 @@ canvas.addEventListener("mousedown", (e) => {
   currentCmd = new MarkerLine(p, currentThickness);
   commands.push(currentCmd);
   redoStack.length = 0;
+  preview = null;
   canvas.dispatchEvent(new Event("drawing-changed"));
 });
 
 canvas.addEventListener("mousemove", (e) => {
-  if (!drawing || !currentCmd) return;
   const p = getPos(e);
-  currentCmd.drag(p.x, p.y);
-  canvas.dispatchEvent(new Event("drawing-changed"));
+  if (drawing && currentCmd) {
+    currentCmd.drag(p.x, p.y);
+    canvas.dispatchEvent(new Event("drawing-changed"));
+  } else {
+    if (!preview) preview = new ToolPreview(p.x, p.y, currentThickness);
+    else preview.update(p.x, p.y, currentThickness);
+    canvas.dispatchEvent(new Event("tool-moved"));
+  }
 });
 
-["mouseup", "mouseleave"].forEach((t) =>
-  canvas.addEventListener(t, () => {
-    drawing = false;
-    currentCmd = null;
-  })
-);
+canvas.addEventListener("mouseup", () => {
+  drawing = false;
+});
+canvas.addEventListener("mouseleave", () => {
+  drawing = false;
+  preview = null;
+  canvas.dispatchEvent(new Event("tool-moved"));
+});
 
 clearBtn.addEventListener("click", () => {
   commands = [];
