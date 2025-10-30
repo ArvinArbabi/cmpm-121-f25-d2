@@ -117,6 +117,9 @@ undoBtn.textContent = "Undo";
 const redoBtn = document.createElement("button");
 redoBtn.textContent = "Redo";
 
+const exportBtn = document.createElement("button");
+exportBtn.textContent = "Export";
+
 toolbar.append(
   thinBtn,
   thickBtn,
@@ -125,6 +128,7 @@ toolbar.append(
   clearBtn,
   undoBtn,
   redoBtn,
+  exportBtn,
 );
 root.append(title, canvas, toolbar);
 
@@ -194,6 +198,7 @@ function renderStickerButtons() {
     b.textContent = s.emoji;
     b.addEventListener("click", () => {
       selectSticker(i);
+      canvas.dispatchEvent(new Event("tool-moved"));
     });
     stickerRow.appendChild(b);
   });
@@ -295,4 +300,17 @@ redoBtn.addEventListener("click", () => {
   const restored = redoStack.pop()!;
   commands.push(restored);
   canvas.dispatchEvent(new Event("drawing-changed"));
+});
+
+exportBtn.addEventListener("click", () => {
+  const big = document.createElement("canvas");
+  big.width = 1024;
+  big.height = 1024;
+  const bctx = big.getContext("2d") as CanvasRenderingContext2D;
+  bctx.scale(4, 4);
+  for (const cmd of commands) cmd.display(bctx);
+  const a = document.createElement("a");
+  a.href = big.toDataURL("image/png");
+  a.download = "sketchpad.png";
+  a.click();
 });
