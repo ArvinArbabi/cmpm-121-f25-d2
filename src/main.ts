@@ -4,7 +4,11 @@ type DisplayCommand = { display(ctx: CanvasRenderingContext2D): void };
 
 class PenStroke implements DisplayCommand {
   private pts: { x: number; y: number }[] = [];
-  constructor(p0: { x: number; y: number }, private width: number) {
+  constructor(
+    p0: { x: number; y: number },
+    private width: number,
+    private color: string,
+  ) {
     this.pts.push(p0);
   }
   drag(x: number, y: number) {
@@ -15,7 +19,7 @@ class PenStroke implements DisplayCommand {
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
     ctx.lineWidth = this.width;
-    ctx.strokeStyle = "#111";
+    ctx.strokeStyle = this.color;
     ctx.beginPath();
     ctx.moveTo(this.pts[0].x, this.pts[0].y);
     for (let i = 1; i < this.pts.length; i++) {
@@ -26,16 +30,22 @@ class PenStroke implements DisplayCommand {
 }
 
 class PenPreview implements DisplayCommand {
-  constructor(public x: number, public y: number, public width: number) {}
-  update(x: number, y: number, width: number) {
+  constructor(
+    public x: number,
+    public y: number,
+    public width: number,
+    public color: string,
+  ) {}
+  update(x: number, y: number, width: number, color: string) {
     this.x = x;
     this.y = y;
     this.width = width;
+    this.color = color;
   }
   display(ctx: CanvasRenderingContext2D) {
     const r = this.width / 2;
-    ctx.lineWidth = 1;
-    ctx.strokeStyle = "rgba(0,0,0,0.5)";
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = this.color;
     ctx.beginPath();
     ctx.arc(this.x, this.y, r, 0, Math.PI * 2);
     ctx.stroke();
@@ -48,20 +58,25 @@ class StickerPreview implements DisplayCommand {
     public y: number,
     public emoji: string,
     public size: number,
+    public angle: number,
   ) {}
-  update(x: number, y: number, emoji: string, size: number) {
+  update(x: number, y: number, emoji: string, size: number, angle: number) {
     this.x = x;
     this.y = y;
     this.emoji = emoji;
     this.size = size;
+    this.angle = angle;
   }
   display(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate((this.angle * Math.PI) / 180);
     ctx.font =
       `${this.size}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", emoji`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "rgba(0,0,0,0.9)";
-    ctx.fillText(this.emoji, this.x, this.y);
+    ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
   }
 }
 
@@ -71,18 +86,22 @@ class StickerCommand implements DisplayCommand {
     public y: number,
     public emoji: string,
     public size: number,
+    public angle: number,
   ) {}
   drag(x: number, y: number) {
     this.x = x;
     this.y = y;
   }
   display(ctx: CanvasRenderingContext2D) {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.rotate((this.angle * Math.PI) / 180);
     ctx.font =
       `${this.size}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", emoji`;
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    ctx.fillStyle = "#000";
-    ctx.fillText(this.emoji, this.x, this.y);
+    ctx.fillText(this.emoji, 0, 0);
+    ctx.restore();
   }
 }
 
@@ -150,34 +169,42 @@ const redoStack: DisplayCommand[] = [];
 type Tool = "pen" | "sticker";
 let tool: Tool = "pen";
 let penWidth = THIN;
+let penColor = randomColor();
 
 type Sticker = { emoji: string; size: number };
 const stickers: Sticker[] = [
   { emoji: "💀", size: DEFAULT_STICKER_SIZE },
   { emoji: "🦴", size: DEFAULT_STICKER_SIZE },
   { emoji: "🔥", size: DEFAULT_STICKER_SIZE },
-  { emoji: "✨", size: DEFAULT_STICKER_SIZE },
 ];
 let selectedSticker = 0;
+let stickerAngle = randomAngle();
+
+function randomColor() {
+  return `hsl(${Math.random() * 360}, 80%, 40%)`;
+}
+function randomAngle() {
+  return Math.random() * 60 - 30;
+}
 
 let preview: PenPreview | StickerPreview | null = new PenPreview(
   128,
   128,
   penWidth,
+  penColor,
 );
 
 function selectPen(btn: HTMLButtonElement, width: number) {
   tool = "pen";
   penWidth = width;
+  penColor = randomColor();
   thinBtn.classList.toggle("selectedTool", btn === thinBtn);
   thickBtn.classList.toggle("selectedTool", btn === thickBtn);
   for (const b of stickerRow.querySelectorAll("button")) {
     b.classList.remove("selectedTool");
   }
   if (!drawing) {
-    if (!(preview instanceof PenPreview)) {
-      preview = new PenPreview(128, 128, penWidth);
-    } else preview.width = penWidth;
+    preview = new PenPreview(128, 128, penWidth, penColor);
     canvas.dispatchEvent(new Event("tool-moved"));
   }
 }
@@ -185,6 +212,7 @@ function selectPen(btn: HTMLButtonElement, width: number) {
 function selectSticker(index: number) {
   tool = "sticker";
   selectedSticker = index;
+  stickerAngle = randomAngle();
   thinBtn.classList.remove("selectedTool");
   thickBtn.classList.remove("selectedTool");
   const buttons = stickerRow.querySelectorAll("button");
@@ -193,9 +221,7 @@ function selectSticker(index: number) {
   );
   if (!drawing) {
     const s = stickers[selectedSticker];
-    if (!(preview instanceof StickerPreview)) {
-      preview = new StickerPreview(128, 128, s.emoji, s.size);
-    } else preview.update(preview.x, preview.y, s.emoji, s.size);
+    preview = new StickerPreview(128, 128, s.emoji, s.size, stickerAngle);
     canvas.dispatchEvent(new Event("tool-moved"));
   }
 }
@@ -251,11 +277,11 @@ canvas.addEventListener("mousedown", (e) => {
   const p = getPos(e);
   redoStack.length = 0;
   if (tool === "pen") {
-    currentCmd = new PenStroke(p, penWidth);
+    currentCmd = new PenStroke(p, penWidth, penColor);
     commands.push(currentCmd);
   } else {
     const s = stickers[selectedSticker];
-    currentCmd = new StickerCommand(p.x, p.y, s.emoji, s.size);
+    currentCmd = new StickerCommand(p.x, p.y, s.emoji, s.size, stickerAngle);
     commands.push(currentCmd);
   }
   preview = null;
@@ -270,13 +296,13 @@ canvas.addEventListener("mousemove", (e) => {
   } else {
     if (tool === "pen") {
       if (!(preview instanceof PenPreview)) {
-        preview = new PenPreview(p.x, p.y, penWidth);
-      } else preview.update(p.x, p.y, penWidth);
+        preview = new PenPreview(p.x, p.y, penWidth, penColor);
+      } else preview.update(p.x, p.y, penWidth, penColor);
     } else {
       const s = stickers[selectedSticker];
       if (!(preview instanceof StickerPreview)) {
-        preview = new StickerPreview(p.x, p.y, s.emoji, s.size);
-      } else preview.update(p.x, p.y, s.emoji, s.size);
+        preview = new StickerPreview(p.x, p.y, s.emoji, s.size, stickerAngle);
+      } else preview.update(p.x, p.y, s.emoji, s.size, stickerAngle);
     }
     canvas.dispatchEvent(new Event("tool-moved"));
   }
