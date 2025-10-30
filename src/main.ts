@@ -104,13 +104,9 @@ const thickBtn = document.createElement("button");
 thickBtn.textContent = "Thick";
 
 const stickerRow = document.createElement("div");
-const s1Btn = document.createElement("button");
-s1Btn.textContent = "💀";
-const s2Btn = document.createElement("button");
-s2Btn.textContent = "🦴";
-const s3Btn = document.createElement("button");
-s3Btn.textContent = "🔥";
-stickerRow.append(s1Btn, s2Btn, s3Btn);
+
+const customBtn = document.createElement("button");
+customBtn.textContent = "Custom sticker";
 
 const clearBtn = document.createElement("button");
 clearBtn.textContent = "Clear";
@@ -121,7 +117,15 @@ undoBtn.textContent = "Undo";
 const redoBtn = document.createElement("button");
 redoBtn.textContent = "Redo";
 
-toolbar.append(thinBtn, thickBtn, stickerRow, clearBtn, undoBtn, redoBtn);
+toolbar.append(
+  thinBtn,
+  thickBtn,
+  stickerRow,
+  customBtn,
+  clearBtn,
+  undoBtn,
+  redoBtn,
+);
 root.append(title, canvas, toolbar);
 
 const ctx = canvas.getContext("2d") as CanvasRenderingContext2D;
@@ -134,8 +138,14 @@ const redoStack: DisplayCommand[] = [];
 type Mode = "marker" | "sticker";
 let mode: Mode = "marker";
 let currentThickness = 2;
-let currentSticker = "💀";
-const stickerSize = 28;
+
+type Sticker = { emoji: string; size: number };
+const stickers: Sticker[] = [
+  { emoji: "💀", size: 28 },
+  { emoji: "🦴", size: 28 },
+  { emoji: "🔥", size: 28 },
+];
+let selectedSticker = 0;
 
 let preview: ToolPreview | StickerPreview | null = new ToolPreview(
   128,
@@ -148,9 +158,9 @@ function selectMarker(btn: HTMLButtonElement, thickness: number) {
   currentThickness = thickness;
   thinBtn.classList.toggle("selectedTool", btn === thinBtn);
   thickBtn.classList.toggle("selectedTool", btn === thickBtn);
-  s1Btn.classList.remove("selectedTool");
-  s2Btn.classList.remove("selectedTool");
-  s3Btn.classList.remove("selectedTool");
+  for (const b of stickerRow.querySelectorAll("button")) {
+    b.classList.remove("selectedTool");
+  }
   if (!drawing) {
     if (!(preview instanceof ToolPreview)) {
       preview = new ToolPreview(128, 128, currentThickness);
@@ -159,27 +169,51 @@ function selectMarker(btn: HTMLButtonElement, thickness: number) {
   }
 }
 
-function selectSticker(btn: HTMLButtonElement, emoji: string) {
+function selectSticker(index: number) {
   mode = "sticker";
-  currentSticker = emoji;
+  selectedSticker = index;
   thinBtn.classList.remove("selectedTool");
   thickBtn.classList.remove("selectedTool");
-  s1Btn.classList.toggle("selectedTool", btn === s1Btn);
-  s2Btn.classList.toggle("selectedTool", btn === s2Btn);
-  s3Btn.classList.toggle("selectedTool", btn === s3Btn);
+  const buttons = stickerRow.querySelectorAll("button");
+  buttons.forEach((b, i) =>
+    b.classList.toggle("selectedTool", i === selectedSticker)
+  );
   if (!drawing) {
+    const s = stickers[selectedSticker];
     if (!(preview instanceof StickerPreview)) {
-      preview = new StickerPreview(128, 128, currentSticker, stickerSize);
-    } else preview.update(preview.x, preview.y, currentSticker, stickerSize);
+      preview = new StickerPreview(128, 128, s.emoji, s.size);
+    } else preview.update(preview.x, preview.y, s.emoji, s.size);
     canvas.dispatchEvent(new Event("tool-moved"));
   }
 }
 
+function renderStickerButtons() {
+  stickerRow.replaceChildren();
+  stickers.forEach((s, i) => {
+    const b = document.createElement("button");
+    b.textContent = s.emoji;
+    b.addEventListener("click", () => {
+      selectSticker(i);
+    });
+    stickerRow.appendChild(b);
+  });
+  selectSticker(selectedSticker);
+}
+
 thinBtn.addEventListener("click", () => selectMarker(thinBtn, 2));
 thickBtn.addEventListener("click", () => selectMarker(thickBtn, 8));
-s1Btn.addEventListener("click", () => selectSticker(s1Btn, "💀"));
-s2Btn.addEventListener("click", () => selectSticker(s2Btn, "🦴"));
-s3Btn.addEventListener("click", () => selectSticker(s3Btn, "🔥"));
+
+customBtn.addEventListener("click", () => {
+  const text = prompt("Custom sticker text", "🧽");
+  if (text && text.length > 0) {
+    stickers.push({ emoji: text, size: 28 });
+    selectedSticker = stickers.length - 1;
+    renderStickerButtons();
+    canvas.dispatchEvent(new Event("tool-moved"));
+  }
+});
+
+renderStickerButtons();
 selectMarker(thinBtn, 2);
 
 function getPos(e: MouseEvent) {
@@ -206,7 +240,8 @@ canvas.addEventListener("mousedown", (e) => {
     currentCmd = new MarkerLine(p, currentThickness);
     commands.push(currentCmd);
   } else {
-    currentCmd = new StickerCommand(p.x, p.y, currentSticker, stickerSize);
+    const s = stickers[selectedSticker];
+    currentCmd = new StickerCommand(p.x, p.y, s.emoji, s.size);
     commands.push(currentCmd);
   }
   preview = null;
@@ -224,9 +259,10 @@ canvas.addEventListener("mousemove", (e) => {
         preview = new ToolPreview(p.x, p.y, currentThickness);
       } else preview.update(p.x, p.y, currentThickness);
     } else {
+      const s = stickers[selectedSticker];
       if (!(preview instanceof StickerPreview)) {
-        preview = new StickerPreview(p.x, p.y, currentSticker, stickerSize);
-      } else preview.update(p.x, p.y, currentSticker, stickerSize);
+        preview = new StickerPreview(p.x, p.y, s.emoji, s.size);
+      } else preview.update(p.x, p.y, s.emoji, s.size);
     }
     canvas.dispatchEvent(new Event("tool-moved"));
   }
